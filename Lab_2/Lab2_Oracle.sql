@@ -7,7 +7,7 @@ CREATE TABLE Apartments (
                  city nvarchar2(30) not null,
                  number_of_rooms int not null,
                  description nvarchar2(255)
-             );
+             ) TABLESPACE REAL_ESTATE_TABLESPACE;
 
 CREATE TABLE Clients (
                  client_id int generated as identity primary key,
@@ -15,7 +15,7 @@ CREATE TABLE Clients (
                  name nvarchar2(20) not null,
                  passport_number nvarchar2(15) not null,
                  phone_number int not null
-             );
+             ) TABLESPACE REAL_ESTATE_TABLESPACE;
 
 CREATE TABLE Rents (
                  rent_id int generated as identity primary key,
@@ -24,14 +24,19 @@ CREATE TABLE Rents (
                  data_begin date not null,
                  end_date date not null,
                  client_id int references Clients(client_id) not null
-             );
+             ) TABLESPACE REAL_ESTATE_TABLESPACE;
 
 CREATE TABLE Bill_details (
                  bill_id int generated as identity primary key,
                  rent_id int references Rents(rent_id) not null,
                  bill_date date not null,
                  total float(2) not null
-             );
+             ) TABLESPACE REAL_ESTATE_TABLESPACE;
+
+CREATE INDEX idx_apartments_city_street ON Apartments(city, street);
+CREATE INDEX idx_rents_apartment_id ON Rents(apartment_id);
+CREATE INDEX idx_rents_client_id ON Rents(client_id);
+CREATE INDEX idx_bill_details_rent_id ON Bill_details(rent_id);
 
 CREATE INDEX idx_apartments_city_street ON Apartments(city, street);
 CREATE INDEX idx_rents_apartment_id ON Rents(apartment_id);
