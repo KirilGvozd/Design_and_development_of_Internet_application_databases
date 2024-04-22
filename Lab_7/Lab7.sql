@@ -1,74 +1,67 @@
 -- Task 1
-WITH BaseData AS (
-    SELECT
-        R.client_id,
-        EXTRACT(MONTH FROM data_begin) AS rental_month,
-        EXTRACT(YEAR FROM data_begin) AS rental_year,
-        A.day_cost
-    FROM
-        Rents R
-    JOIN
-        Apartments A ON R.apartment_id = A.apartment_id
-),
-LastYearData AS (
-    SELECT
-        client_id,
-        rental_month,
-        AVG(day_cost) AS avg_day_cost_last_year
-    FROM
-        BaseData
-    WHERE
-        rental_year = EXTRACT(YEAR FROM CURRENT_DATE) - 1
-    GROUP BY
-        client_id,
-        rental_month
-),
-ProjectedData AS (
-    SELECT
-        bd.client_id,
-        bd.rental_month,
-        (lad.avg_day_cost_last_year * 1.1) AS projected_day_cost
-    FROM
-        BaseData bd
-    JOIN
-        LastYearData lad ON bd.client_id = lad.client_id AND bd.rental_month = lad.rental_month
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (1, TO_DATE('2023-01-15', 'YYYY-MM-DD'), 90);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (1, TO_DATE('2023-02-10', 'YYYY-MM-DD'), 95);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (1, TO_DATE('2024-01-20', 'YYYY-MM-DD'), 80);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (1, TO_DATE('2024-02-05', 'YYYY-MM-DD'), 85);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (2, TO_DATE('2023-01-10', 'YYYY-MM-DD'), 85);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (2, TO_DATE('2023-02-05', 'YYYY-MM-DD'), 90);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (2, TO_DATE('2024-01-25', 'YYYY-MM-DD'), 75);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (2, TO_DATE('2024-02-15', 'YYYY-MM-DD'), 80);
+COMMIT;
+TRUNCATE TABLE RENTALS;
+
+SELECT *
+FROM (
+  SELECT CLIENT_ID,
+         TRUNC(rental_date, 'MM') AS Month,
+         AVG(rental_cost) AS Rental_cost
+  FROM RENTALS
+  GROUP BY client_id, TRUNC(rental_date, 'MM')
 )
-SELECT
-    client_id,
-    rental_month,
-    projected_day_cost
-FROM
-    ProjectedData
-ORDER BY
-    client_id,
-    rental_month;
-
-
-INSERT INTO RENTS (APARTMENT_ID, STATUS, DATA_BEGIN, END_DATE, CLIENT_ID) VALUES (2, 'Active', DATE '2023-04-01', DATE '2023-04-15', 2);
-INSERT INTO RENTS (APARTMENT_ID, STATUS, DATA_BEGIN, END_DATE, CLIENT_ID) VALUES (3, 'active', DATE '2023-05-10', DATE '2023-05-20', 3);
-SELECT * FROM RENTS;
-INSERT INTO BILL_DETAILS (RENT_ID, BILL_DATE, TOTAL) VALUES (33, DATE '2023-04-15', 1500);
-INSERT INTO BILL_DETAILS (RENT_ID, BILL_DATE, TOTAL) VALUES (34, DATE '2023-05-20', 1200);
+MODEL
+  PARTITION BY (client_id)
+  DIMENSION BY (ROW_NUMBER() OVER (PARTITION BY client_id ORDER BY Month) AS row_number)
+  MEASURES (Rental_cost, Month)
+  RULES (
+    Rental_cost[row_number > 1] = CASE
+                                WHEN Month[CV() - 1] < ADD_MONTHS(TRUNC(SYSDATE,'YEAR'), -1) THEN LEAST(100, Rental_cost[CV() - 1] * 1.1)
+                                ELSE Rental_cost[CV() - 1]
+                             END
+  )
+ORDER BY client_id, Month;
 
 -- Task 2
 SELECT *
-FROM RENTS
+FROM Rentals
 MATCH_RECOGNIZE (
-  PARTITION BY APARTMENT_ID
-  ORDER BY DATA_BEGIN
+  PARTITION BY client_id
+  ORDER BY rental_date
   MEASURES
-    FIRST(DAY_COST) AS начальный_балл,
-    LAST(DAY_COST) AS предыдущий_балл,
-    DAY_COST AS текущий_балл,
-    CLASSIFIER() AS pattern_match
-  ONE ROW PER MATCH
-  AFTER MATCH SKIP TO NEXT ROW
-  PATTERN (Старт Рост* Падение* Рост*)
+    START_ROW.rental_date AS start_date,
+    END_ROW.rental_date AS end_date,
+    START_ROW.rental_cost AS start_cost,
+    BOTTOM_ROW.rental_cost AS max_cost,
+    END_ROW.rental_cost AS end_cost
+  PATTERN (START_ROW UP BOTTOM_ROW DOWN END_ROW)
   DEFINE
-    Старт AS DAY_COST IS NOT NULL,
-    Рост AS DAY_COST > PREV(DAY_COST),
-    Падение AS DAY_COST < PREV(DAY_COST)
-);
+    UP AS UP.rental_cost > PREV(UP.rental_cost),
+    DOWN AS DOWN.rental_cost < PREV(DOWN.rental_cost)
+) MR
+ORDER BY client_id, start_date;
 
-SELECT * FROM APARTMENTS;
-SELECT * FROM RENTS;
+-- Вставка данных для демонстрации работы запроса
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (1, TO_DATE('2023-01-01', 'YYYY-MM-DD'), 100.00);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (1, TO_DATE('2023-02-01', 'YYYY-MM-DD'), 110.00);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (1, TO_DATE('2023-03-01', 'YYYY-MM-DD'), 90.00);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (1, TO_DATE('2023-04-01', 'YYYY-MM-DD'), 120.00);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (1, TO_DATE('2023-05-01', 'YYYY-MM-DD'), 130.00);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (1, TO_DATE('2023-06-01', 'YYYY-MM-DD'), 110.00);
+
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (2, TO_DATE('2023-01-01', 'YYYY-MM-DD'), 90.00);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (2, TO_DATE('2023-02-01', 'YYYY-MM-DD'), 80.00);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (2, TO_DATE('2023-03-01', 'YYYY-MM-DD'), 100.00);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (2, TO_DATE('2023-04-01', 'YYYY-MM-DD'), 70.00);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (2, TO_DATE('2023-05-01', 'YYYY-MM-DD'), 75.00);
+INSERT INTO Rentals (client_id, rental_date, rental_cost) VALUES (2, TO_DATE('2023-06-01', 'YYYY-MM-DD'), 80.00);
+
+COMMIT;
